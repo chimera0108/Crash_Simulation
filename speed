@@ -1,0 +1,155 @@
+#!/bin/csh
+
+##########################
+##  Constant Variables
+##########################
+#set PROGRAM_PATH="/home/mteng/bcreech/speed_data.csv"
+set PROGRAM_PATH="~/Documents/Speed_Project/speed_data.csv"
+set RELATIONAL=1.46666666666
+set FRAME_TIME=0.0333333333
+
+##########################
+## Known Values of the Crash 
+##########################
+set ORIG_SPEED=30.32
+set IMPACT_MPH=26.67
+set AFTER_IMPACT_MPH=0.0
+set SEPARATE_SPEED_MPH=21.1
+
+set DRAG_FACTOR=0.617
+set DISTANCE_FT=11.35
+set PRECRASH_SEC=0.2715
+set IMPULSE_SEC=1.0333
+
+
+##########################
+## Convert all values to
+## one consistent standard 
+##########################
+#Below calculates the value for Feet Per Second off of the known Miles Per Hour
+set FPS=`echo "scale=10;$ORIG_SPEED * $RELATIONAL" | bc`
+set IMPACT_FPS=`echo "scale=10;$IMPACT_MPH * $RELATIONAL" | bc`
+set AFTER_IMPACT_FPS=`echo "scale=10;$AFTER_IMPACT_MPH * $RELATIONAL" | bc`
+set SEPARATE_SPEED_FPS=`echo "scale=10;$SEPARATE_SPEED_MPH * $RELATIONAL" | bc`
+
+#Below calculates the value for InitialC12
+if ( `(echo "scale=10;$AFTER_IMPACT_FPS > $SEPARATE_SPEED_FPS" | bc)` == 1 ) then
+   set ACCEL_FACTOR=`echo "scale=10;($AFTER_IMPACT_FPS - $SEPARATE_SPEED_FPS)/32.2 * $IMPULSE_SEC" | bc`
+else
+   set ACCEL_FACTOR=`echo "scale=10;($SEPARATE_SPEED_FPS - $AFTER_IMPACT_FPS)/32.2 * $IMPULSE_SEC" | bc`
+endif
+
+##########################
+## At this point all values
+## from the Initial Sheet
+## are available for
+## computation
+##########################
+
+#Variables used for manipulation
+set n=0
+set TIME_01=0.0
+set OLD_TIME=0.0
+set MPH_01=$ORIG_SPEED
+set MPH_T1=`echo "scale=10;$MPH_01" | bc`
+set MPH_T2=`echo "scale=10;$MPH_01" | bc`
+set FPS_01=$FPS
+set FPS_02=$FPS
+set STOP_LOOP=10
+
+echo "FRAME,EVENT,TIME,FPS" >! $PROGRAM_PATH
+echo "$n,,$TIME_01,$FPS" >> $PROGRAM_PATH
+
+#while ( `(echo "scale=10;$STOP_LOOP > 0"|bc)` == 1 )
+#Use this while loop until program works correctly
+while ( `(echo "$n < 5"|bc)` == 1 )
+
+#This always keeps the last FPS value available for comparisons
+if ( `(echo "$n % 2" | bc)` == 0 ) then
+    set OLD_FPS=$FPS_02
+    set FPS_01=$FPS
+else
+    set OLD_FPS=$FPS_01
+    set FPS_02=$FPS
+endif
+
+
+
+#Below Calculates the Drag Factor
+if ( `(echo "scale=10;$FPS > $OLD_FPS" | bc)` == 1 ) then
+   set DRAG_FACTOR=`(echo "scale=10;($FPS - $OLD_FPS)/32.2*$TIME_01" | bc)`
+else if ( `(echo "scale=10;$FPS < $OLD_FPS" | bc)` == 1 ) then
+   set DRAG_FACTOR=`(echo "scale=10;($OLD_FPS - $FPS)/32.2*$TIME_01" | bc)`
+else
+   set DRAG_FACTOR=0
+endif
+
+
+echo "Drag Factor is $DRAG_FACTOR"
+#=IF(E3-((C4-C3)*G4*32.2)/1.46666666666>Initial!$C$9,     IF(F4=1,(E3-((C4-C3)*G4*32.2)),(E3+((C4-C3)*G4*32.2))),D4*1.4666666666)
+#E3 = Previous FPS
+#C4 = Current Time
+#C3 = Previous Time
+#G4 = Current Factor
+#InitialC9 = Impact Speed
+#F4 = Acceleration/Deceleration
+#D4 = Current MPH
+#FPS = Current FPS
+#OLD_FPS = Last FPS
+
+#Below finds the new value of FPS
+ set FPS_TEMP_01=`(echo "scale=10;($TIME_01 - $OLD_TIME)*$DRAG_FACTOR*32.2" | bc)`
+ set FPS_TEMP_02=`(echo "scale=10;$OLD_FPS - $FPS_TEMP_01" | bc)`
+
+echo "FPS_TEMP_01 is $FPS_TEMP_01"
+echo "FPS_TEMP_02 is $FPS_TEMP_02"
+echo "IMPACT_FPS is $IMPACT_FPS"
+echo "OLD_FPS is $OLD_FPS"
+echo "FPS is $FPS"
+  if ( `(echo "scale=10;$FPS_TEMP_02 > $IMPACT_FPS" | bc)` == 1 ) then
+   if ( `(echo "scale=10;$OLD_FPS >= $FPS" | bc)` == 1 ) then
+       set FPS=$FPS_TEMP_02
+   else
+       set FPS=`(echo "scale=10;$FPS + $FPS_TEMP_01" | bc)`
+   endif
+  else
+      #set FPS=`echo "scale=10;$MPH_01 * $RELATIONAL" | bc`
+      #Spreadsheet says to take current MPH and convert to FPS and save.
+      #However MPH is computed by the FPS value
+  endif
+#set FPS_02=`echo "scale=10;$FPS / $RELATIONAL" | bc`
+echo "After trying to find the FPS value the result is $FPS"
+
+#Below finds the new value of MPH
+#Below adjusts the FPS according to current condition of crash
+#=IF(D3=Initial!$C$9,Initial!$C$10,IF((E4/1.46666666666)<Initial!$C$9,Initial!$C$9,(E4/1.46666666666)))
+#IF ([Previous Speed = Impact Speed],After_Impact,IF ([FPS < IMPACT_FPS],IMPACT_FPS,FPS))
+if ( `(echo "scale=10;$OLD_FPS == $IMPACT_FPS" | bc)` == 1 ) then
+    #set FPS=$AFTER_IMPACT_FPS
+else if ( `(echo "scale=10;$FPS < $IMPACT_FPS" | bc)` == 1 ) then
+   #set FPS=$IMPACT_FPS
+endif
+
+
+#   if ( `(echo "scale=2;$MPH_01 == $IMPACT_MPH" | bc)` == 1 ) then
+#       set MPH_01=$AFTER_IMPACT_MPH
+#   else if ( `(echo "scale=4;$FPS_02 < $IMPACT_MPH" | bc)` == 1 ) then
+#       set MPH_01=$IMPACT_MPH
+#   else
+#       set MPH_01=$FPS_02
+#   endif
+
+echo "$n,,$TIME_01,$FPS" >> $PROGRAM_PATH
+
+#Below advances the variables for the next loop
+   set FPS_02=$MPH_01
+   @ n ++
+   set OLD_TIME=$TIME_01
+   set TIME_01=`(echo "scale=10;$n*$FRAME_TIME" | bc)`
+
+   if ( `(echo "scale=4;$MPH_01 < $FPS" | bc)` == 1 ) then
+       set STOP_LOOP=$MPH_01
+   else
+       set STOP_LOOP=$FPS
+   endif
+end
